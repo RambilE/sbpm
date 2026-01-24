@@ -1,0 +1,220 @@
+#!/usr/bin/env bash
+
+# simple bash (+git +coreutils) package manager
+# for now can only download one thing at a time interactively
+# github.com/rambile
+
+# where to clone repos
+DIR_CACHE=cache
+# project name
+PNAME="sbpm"
+# project description
+PDESC='A simple bash "package" manager'
+# git clone args (submodules maybe?)
+CLONE_ARGS="--depth 1"
+# git pull args
+PULL_ARGS="-q"
+# default git repository host
+HOST=github
+
+# distro specific
+# AUR helper command
+AURH="echo y | LANG=C yay --answerdiff None --answerclean None --mflags "--noconfirm""
+
+# create cache for git repo
+mkdir -p $DIR_CACHE/$PNAME
+PCACHE=$DIR_CACHE/$PNAME
+
+goAndDoPlease() { # $1 - dir to go to; $2 - a command to do there
+    local goback=$(pwd)
+    cd $1; $2
+    cd $goback
+}
+
+hostExpansion() {
+    case $1 in
+        github)
+            echo "https://github.com/$2"
+    esac
+}
+
+repoSync() { # $1 - package name in a format "author/repo"
+    local CLONED_DIR="$PCACHE/$1"
+    local HOST_EXPANDED=$(hostExpansion $HOST $1)
+
+    pretty stage "Sync"
+
+    if ! [ -d $PCACHE/$1 ]; then
+        git clone $CLONE_ARGS $HOST_EXPANDED "$CLONED_DIR" || exit 1
+    else
+        printf "Project already cloned, pulling instead\n"
+        goAndDoPlease "$CLONED_DIR" "git pull $PULL_ARGS"
+    fi
+    afterSyncSetup $CLONED_DIR $1
+}
+
+afterSyncSetup() { # $1 - a directory of a project in cache, $2 - project name
+    mkdir -p $PCACHE/sbpm-tmp
+    cp $1/SETUP.sh $1/dependencies $PCACHE/sbpm-tmp 2> /dev/null
+    if [ $? -ne 0 ]; then
+        pretty err "The repository does not contain dependencies and/or SETUP.sh file"
+        cleanCache $2
+        exit 1
+    fi
+    depCheckProxy
+    goAndDoPlease $1 "chmod +x SETUP.sh"
+    goAndDoPlease $1 "./SETUP.sh"
+}
+
+depCheckProxy() {
+    checkDistro
+
+    source $PCACHE/sbpm-tmp/dependencies
+    pretty stage "Dependency check"
+    pretty info "Checking dependencies"
+
+    $distroDepcheckFunc
+}
+
+checkDistro() {
+    # TODO this is not universal and works in most but not all distros
+    distroName=$(grep '^NAME=' /etc/os-release | cut -d= -f2 | tr -d '"')
+
+    case $distroName in
+        "Arch Linux" | "smth else")
+            distro=$distroName
+            distroDepcheckFunc=depCheckPacman
+        ;;
+        *)
+            pretty err "Distro not supported yet. Or something did break."; exit 1
+        ;;
+    esac
+}
+
+depCheckPacman() {
+    err=()
+    for dep in "${deplistPacman[@]}"; do
+        if ! [[ $(pacman -Qq $dep 2> /dev/null) == "$dep" ]] then
+            pretty err2 "$dep not found"
+            err+=($dep)
+        else
+            pretty info2 "$dep found"
+        fi
+    done
+
+    if ! [[ $err == "" ]] then
+        pretty err "Dependencies are not satisfied"
+        pretty info "Installing missing dependencies"
+        $AURH -Sy ${err[@]}
+    else
+        pretty info "Dependencies are satisfied"
+    fi
+}
+
+runSetup() {
+:
+}
+
+cleanCache() {
+    if [[ -z ${1+x} ]]; then
+        pretty info "Argument not given, cleaning all cache"
+        rm -rf "$PCACHE"
+    else
+        if [[ -d "$PCACHE/$2" ]]; then
+            pretty info "cleaning $1 in cache"
+            rm -rf "$PCACHE/$1" # TODO: this will leave an empty directory if the latest removed project left the dir empty, maybe should get fixed
+            rm -rf $PCACHE/sbpm-tmp/
+        else
+            pretty err "No such repository in cache"
+        fi
+    fi
+}
+
+getHelp() {
+    printf "$(tgrn)$PNAME$(tclr) - $PDESC
+Example usage: $(tgrn)$PNAME $(tclr)[ARGUMENTS] $(tprp)get $(tylw)<author/repo>$(tclr)
+$(tgra)You should always use arguments before an option$(tclr)
+
+Options:
+    $(tprp)get $(tylw)<author/repo>$(tclr)    Syncs a given repository from a default host ($HOST)
+    $(tprp)clean $(tylw)<author/repo>$(tclr)  Removes a repository from cache
+
+Arguments:
+    $(tprp)--branch $(tylw)<branch>$(tclr)      Specifies a branch to clone
+    $(tprp)--clone-args $(tylw)<branch>$(tclr)  Specifies arguments for git clone
+    $(tprp)--host$(tylw)<branch>$(tclr)         Specifies a host from which git will clone a repo
+
+Other:
+    $(tprp)meow$(tclr)              Meow!
+    $(tprp)help, -h, --help$(tclr)  Print this message
+"
+}
+
+pretty() {
+    case $1 in
+        stage)
+            printf "$(tprp)Running stage $(tclr)[$2]\n" >&2
+        ;;
+        info)
+            printf "$(tgrn)==>$(tclr) $2\n" >&2
+        ;;
+        info2)
+            printf "$(tgrn)   ==>$(tclr) $2\n" >&2
+        ;;
+        err)
+            printf "$(tred)$2$(tclr)\n" >&2
+        ;;
+        err2)
+            printf "$(tred)[E]==>$(tclr) $2\n" >&2
+        ;;
+    esac
+}
+
+tclr () { printf "\e[0;37;0m" ; }
+tgra () { printf "\e[0;30;1m" ; }
+tred () { printf "\e[0;31;1m" ; }
+tgrn () { printf "\e[0;32;1m" ; }
+tblu () { printf "\e[0;34;1m" ; }
+tylw () { printf "\e[0;33;1m" ; }
+tprp () { printf "\e[0;35;1m" ; }
+tita () { printf "\e[3m" ; }
+
+POSITIONAL_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        meow)
+            echo meow!
+            exit 0
+        ;;
+        help | -h | --help)
+            getHelp; exit 0
+        ;;
+        clean)
+            cleanCache $2
+            exit 0
+        ;;
+        --host)
+            HOST=$2; shift
+        ;;
+        --clone-args)
+            if [[ -z ${name+x} ]]; then
+                pretty err 'Appending args is supported only in a string (i.e. "-q -b main")'
+            fi
+            CLONE_ARGS=$2; shift
+        ;;
+        --branch)
+            CLONE_ARGS="$CLONE_ARGS -b $2"
+        ;;
+        get)
+            repoSync $2; shift
+        ;;
+        -*|--*)
+            pretty err "Unknown option $1, check help (-h/--help/help)"
+            exit 1
+        ;;
+        *)
+            POSITIONAL_ARGS+=("$1"); shift
+        ;;
+    esac
+done
+set -- "${POSITIONAL_ARGS[@]}"
