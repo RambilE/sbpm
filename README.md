@@ -1,6 +1,7 @@
 # sbpm
 A simple bash "package" manager
 
+```
 Example usage: sbpm [ARGUMENTS] get <author/repo>
 You should always use arguments before an option
 
@@ -16,5 +17,6 @@ Arguments:
 Other:
     meow              Meow!
     help, -h, --help  Print this message
+```
 
 note: you can change the cache directory to anywhere accesible to your user in the first lines of script
