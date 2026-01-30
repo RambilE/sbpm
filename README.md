@@ -10,9 +10,9 @@ Options:
     clean <author/repo>  Removes a repository from cache
 
 Arguments:
-    --branch <branch>      Specifies a branch to clone
-    --clone-args <args>    Specifies arguments for git clone
-    --host <host>          Specifies a host from which git will clone a repo
+    --branch <branch>    Specifies a branch to clone
+    --clone-args <args>  Specifies arguments for git clone
+    --host <host>        Specifies a host from which git will clone a repo
 
 Other:
     meow              Meow!
