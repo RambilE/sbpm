@@ -6,6 +6,8 @@
 
 # where to clone repos
 DIR_CACHE=cache
+# store dir
+STORE_DIR=store
 # project name
 PNAME="sbpm"
 # project description
@@ -129,6 +131,17 @@ cleanCache() {
         fi
     fi
 }
+
+storeAdd() {
+    getSum "rambile/dots"
+}
+
+getSum() { # $1 - package name (author/repo)
+    echo $1 | sha1sum | wc -w 1
+}
+
+storeAdd
+exit 0
 
 getHelp() {
     printf "$(tgrn)$PNAME$(tclr) - $PDESC
