@@ -11,7 +11,7 @@ Options:
 
 Arguments:
     --branch <branch>      Specifies a branch to clone
-    --clone-args <args>  Specifies arguments for git clone
+    --clone-args <args>    Specifies arguments for git clone
     --host <host>          Specifies a host from which git will clone a repo
 
 Other:
