@@ -140,9 +140,9 @@ Options:
     $(tprp)clean $(tylw)<author/repo>$(tclr)  Removes a repository from cache
 
 Arguments:
-    $(tprp)--branch $(tylw)<branch>$(tclr)      Specifies a branch to clone
-    $(tprp)--clone-args $(tylw)<branch>$(tclr)  Specifies arguments for git clone
-    $(tprp)--host$(tylw)<branch>$(tclr)         Specifies a host from which git will clone a repo
+    $(tprp)--branch $(tylw)<branch>$(tclr)    Specifies a branch to clone
+    $(tprp)--clone-args $(tylw)<args>$(tclr)  Specifies arguments for git clone
+    $(tprp)--host$(tylw)<host>$(tclr)         Specifies a host from which git will clone a repo
 
 Other:
     $(tprp)meow$(tclr)              Meow!
