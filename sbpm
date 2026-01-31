@@ -215,13 +215,14 @@ Example usage: $(tgrn)$PNAME $(tclr)[ARGUMENTS] $(tprp)get $(tylw)<author/repo>$
 $(tgra)You should always use arguments before an option$(tclr)
 
 Options:
-    $(tprp)get $(tylw)<author/repo>$(tclr)    Syncs a given package from a default host (github)
-    $(tprp)del $(tylw)<author/repo>$(tclr)    Removes a package from store
+    $(tprp)get $(tylw)<author/repo>$(tclr)    Syncs a given package from a default host (github) with backups of existing files
+    $(tprp)del $(tylw)<author/repo>$(tclr)    Removes a package from store and deletes associated symlinks
 
 Arguments:
     $(tprp)--branch $(tylw)<branch>$(tclr)    Specifies a branch to clone
     $(tprp)--clone-args $(tylw)<args>$(tclr)  Specifies arguments for git clone
     $(tprp)--host$(tylw)<host>$(tclr)         Specifies a host from which git will clone a repo
+    -$(tprp)-nosave$(tylw)                    Does not backup files if there is already one in specified directory
 
 Other:
     $(tprp)meow$(tclr)              Meow!
