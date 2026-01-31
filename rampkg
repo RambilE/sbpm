@@ -1,0 +1,7 @@
+deplistPacman=(bash coreutils git)
+
+provides=(sbpm:"$HOME/.local/bin/sbpm")
+
+SETUP() {
+:
+}

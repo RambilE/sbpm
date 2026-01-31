@@ -6,13 +6,14 @@ Example usage: sbpm [ARGUMENTS] get <author/repo>
 You should always use arguments before an option
 
 Options:
-    get <author/repo>    Syncs a given repository from a default host (github.com)
-    clean <author/repo>  Removes a repository from cache
+    get <author/repo>  Syncs a given package from a default host (github) with backups of existing files
+    del <author/repo>  Removes a package from store and deletes associated symlinks
 
 Arguments:
     --branch <branch>    Specifies a branch to clone
     --clone-args <args>  Specifies arguments for git clone
     --host <host>        Specifies a host from which git will clone a repo
+    --nosave             Does not backup files if there is already one in specified directory
 
 Other:
     meow              Meow!
