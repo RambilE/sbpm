@@ -4,28 +4,35 @@
 # for now can only download one thing at a time interactively
 # github.com/rambile
 
-# where to clone repos
-DIR_CACHE=cache
-# store dir
-STORE_DIR=store
 # project name
 PNAME="sbpm"
 # project description
 PDESC='A simple bash "package" manager'
+# where to clone repos
+DIR_CACHE="$HOME/.cache"
+# data dir for project
+DATA_DIR="$HOME/.local/share/$PNAME"
+# store dir
+STORE_DIR="$DATA_DIR/store"
 # git clone args (submodules maybe?)
 CLONE_ARGS="--depth 1"
 # git pull args
-PULL_ARGS="-q"
+PULL_ARGS=""
 # default git repository host
 HOST=github
+# does the script save a file if it is in provides
+NOSAVE=0
 
 # distro specific
 # AUR helper command
-AURH="echo y | LANG=C yay --answerdiff None --answerclean None --mflags "--noconfirm""
+AURH="yay --answerdiff None --answerclean None --mflags "--noconfirm""
 
 # create cache for git repo
 mkdir -p $DIR_CACHE/$PNAME
 PCACHE=$DIR_CACHE/$PNAME
+
+# create store dir
+mkdir -p $STORE_DIR
 
 goAndDoPlease() { # $1 - dir to go to; $2 - a command to do there
     local goback=$(pwd)
@@ -40,38 +47,53 @@ hostExpansion() {
     esac
 }
 
+dirName() { # $1 - author/repo, outputs "author repo"
+    IFS='/' read -ra sepd <<< "$1"
+    echo "${sepd[1]}@${sepd[0]}"
+}
+
 repoSync() { # $1 - package name in a format "author/repo"
-    local CLONED_DIR="$PCACHE/$1"
+    local CLONED_DIR="$PCACHE/$(dirName $1)"
     local HOST_EXPANDED=$(hostExpansion $HOST $1)
+    local PACKAGE_DIR=$(getDirInStore $1)
 
     pretty stage "Sync"
 
-    if ! [ -d $PCACHE/$1 ]; then
+    if ! [[ -d "$PACKAGE_DIR" ]]; then
         git clone $CLONE_ARGS $HOST_EXPANDED "$CLONED_DIR" || exit 1
+
+        if ! [[ -a "$CLONED_DIR/rampkg" ]]; then
+            pretty err2 "The repository does not contain rampkg file"
+            cleanCache $1
+            exit 1
+        fi
+
+        pretty info "Copying package from cache to store"
+        cp -r "$CLONED_DIR" "$PACKAGE_DIR"
+        cleanCache $1
     else
-        printf "Project already cloned, pulling instead\n"
-        goAndDoPlease "$CLONED_DIR" "git pull $PULL_ARGS"
+        removeLinks $1
+        printf "Package already installed, updating instead\n"
+        goAndDoPlease "$PACKAGE_DIR" "git pull $PULL_ARGS"
     fi
-    afterSyncSetup $CLONED_DIR $1
+    afterSyncSetup $PACKAGE_DIR $1
 }
 
-afterSyncSetup() { # $1 - a directory of a project in cache, $2 - project name
-    mkdir -p $PCACHE/sbpm-tmp
-    cp $1/SETUP.sh $1/dependencies $PCACHE/sbpm-tmp 2> /dev/null
-    if [ $? -ne 0 ]; then
-        pretty err "The repository does not contain dependencies and/or SETUP.sh file"
-        cleanCache $2
-        exit 1
-    fi
+getDirInStore() { # $1 - author/repo
+    echo "$STORE_DIR/$(dirName $1)"
+}
+
+afterSyncSetup() { # $1 - a directory of a package in store, $2 - package name
+    source "$1/rampkg"
     depCheckProxy
-    goAndDoPlease $1 "chmod +x SETUP.sh"
-    goAndDoPlease $1 "./SETUP.sh"
+    linkProvides "$1"
+    runSetup
 }
 
 depCheckProxy() {
     checkDistro
 
-    source $PCACHE/sbpm-tmp/dependencies
+    #source $PCACHE/sbpm-tmp/dependencies
     pretty stage "Dependency check"
     pretty info "Checking dependencies"
 
@@ -84,7 +106,6 @@ checkDistro() {
 
     case $distroName in
         "Arch Linux" | "smth else")
-            distro=$distroName
             distroDepcheckFunc=depCheckPacman
         ;;
         *)
@@ -94,7 +115,7 @@ checkDistro() {
 }
 
 depCheckPacman() {
-    err=()
+    local err=()
     for dep in "${deplistPacman[@]}"; do
         if ! [[ $(pacman -Qq $dep 2> /dev/null) == "$dep" ]] then
             pretty err2 "$dep not found"
@@ -105,43 +126,88 @@ depCheckPacman() {
     done
 
     if ! [[ $err == "" ]] then
-        pretty err "Dependencies are not satisfied"
+        pretty err "\nDependencies are not satisfied\n"
         pretty info "Installing missing dependencies"
-        $AURH -Sy ${err[@]}
+        $AURH -Sy ${err[@]} # right now, as of yay v12.5.7, you cannot tell if the installation failed or not. This has been fixed 10 days after the release though. So it will continue no matter what, even if the dependencies do not work.
     else
         pretty info "Dependencies are satisfied"
     fi
 }
 
 runSetup() {
-:
+    pretty stage "Additional setup"
+    pretty info "(If this does nothing then there is no setup)"
+    SETUP
 }
 
-cleanCache() {
+linkProvides() { # $1 - directory of a package in store
+    pretty stage "Linking provides"
+    pretty info "Checking if provides are present"
+
+    if [[ $(echo ${provides[@]}) == "" ]]; then
+        pretty info2 "The project does not provide any files by itself"
+    else
+        for dir in ${provides[@]}; do
+            IFS=':' read -ra sepd <<< "$dir"
+            pretty info2 "Checking if there is already a file"
+            if [[ -a ${sepd[1]} ]]; then
+                pretty err2 "File already exists"
+                if [[ $NOSAVE == 0 ]]; then
+                    pretty info2 "Backing up file"
+                    mkdir -p "$DATA_DIR/backup$(dirname ${sepd[1]})"
+                    cp ${sepd[1]} "$DATA_DIR/backup$(dirname ${sepd[1]})"
+                fi
+            fi
+            pretty info2 "Symlinking $1/${sepd[0]} to ${sepd[1]}"
+            ln -sf $1/${sepd[0]} ${sepd[1]}
+        done
+    fi
+}
+
+removeLinks() { # $1 - package name
+    pretty info "Removing links from $1 ($(dirName $1))"
+    local PACKAGE_DIR=$(getDirInStore $1)
+    source "$PACKAGE_DIR/rampkg"
+
+    if [[ $(echo ${provides[@]}) == "" ]]; then
+        pretty info1 "There are no links"
+    else
+        for dir in ${provides[@]}; do
+            IFS=':' read -ra sepd <<< "$dir" # [0] - file in store, [1] - destination dir
+            pretty info2 "Removing link ${sepd[1]}"
+            if [[ -h ${sepd[1]} ]]; then
+                rm ${sepd[1]}
+            else
+                pretty err2 "The file is not a symlink or does not exist"
+            fi
+        done
+    fi
+}
+
+cleanCache() { # $1 - author/repo
     if [[ -z ${1+x} ]]; then
         pretty info "Argument not given, cleaning all cache"
         rm -rf "$PCACHE"
     else
-        if [[ -d "$PCACHE/$2" ]]; then
+        if [[ -d "$PCACHE/$(dirName $1)" ]]; then
             pretty info "cleaning $1 in cache"
-            rm -rf "$PCACHE/$1" # TODO: this will leave an empty directory if the latest removed project left the dir empty, maybe should get fixed
-            rm -rf $PCACHE/sbpm-tmp/
+            rm -rf "$PCACHE/$(dirName $1)"
         else
-            pretty err "No such repository in cache"
+            pretty err "No such package in cache"
         fi
     fi
 }
 
-storeAdd() {
-    getSum "rambile/dots"
+deletePackage() { # $1 - author/repo
+    # right now will delete only the package folder
+    if [[ -d "$STORE_DIR/$(dirName $1)" ]]; then
+        pretty info "Removing $1 from store ($STORE_DIR/$(dirName $1)/)"
+        removeLinks $1
+        rm -rf "$STORE_DIR/$(dirName $1)"
+    else
+        pretty err "No such package in store"
+    fi
 }
-
-getSum() { # $1 - package name (author/repo)
-    echo $1 | sha1sum | wc -w 1
-}
-
-storeAdd
-exit 0
 
 getHelp() {
     printf "$(tgrn)$PNAME$(tclr) - $PDESC
@@ -149,8 +215,8 @@ Example usage: $(tgrn)$PNAME $(tclr)[ARGUMENTS] $(tprp)get $(tylw)<author/repo>$
 $(tgra)You should always use arguments before an option$(tclr)
 
 Options:
-    $(tprp)get $(tylw)<author/repo>$(tclr)    Syncs a given repository from a default host ($HOST)
-    $(tprp)clean $(tylw)<author/repo>$(tclr)  Removes a repository from cache
+    $(tprp)get $(tylw)<author/repo>$(tclr)    Syncs a given package from a default host (github)
+    $(tprp)del $(tylw)<author/repo>$(tclr)    Removes a package from store
 
 Arguments:
     $(tprp)--branch $(tylw)<branch>$(tclr)    Specifies a branch to clone
@@ -166,7 +232,7 @@ Other:
 pretty() {
     case $1 in
         stage)
-            printf "$(tprp)Running stage $(tclr)[$2]\n" >&2
+            printf "\n$(tprp)#############$(tclr)\n$(tprp)Running stage $(tclr)[$2]\n$(tprp)#############$(tclr)\n\n" >&2
         ;;
         info)
             printf "$(tgrn)==>$(tclr) $2\n" >&2
@@ -192,22 +258,22 @@ tylw () { printf "\e[0;33;1m" ; }
 tprp () { printf "\e[0;35;1m" ; }
 tita () { printf "\e[3m" ; }
 
+#removeLinks rambile/sbpm-test
+
 POSITIONAL_ARGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
         meow)
-            echo meow!
-            exit 0
+            echo meow!; exit 0
         ;;
         help | -h | --help)
             getHelp; exit 0
         ;;
-        clean)
-            cleanCache $2
-            exit 0
-        ;;
         --host)
             HOST=$2; shift
+        ;;
+        --nosave)
+            NOSAVE=1; shift
         ;;
         --clone-args)
             if [[ -z ${name+x} ]]; then
@@ -216,14 +282,16 @@ while [[ $# -gt 0 ]]; do
             CLONE_ARGS=$2; shift
         ;;
         --branch)
-            CLONE_ARGS="$CLONE_ARGS -b $2"
+            CLONE_ARGS="$CLONE_ARGS -b $2"; shift
         ;;
         get)
             repoSync $2; shift
         ;;
+        del)
+            deletePackage $2; shift
+        ;;
         -*|--*)
-            pretty err "Unknown option $1, check help (-h/--help/help)"
-            exit 1
+            pretty err "Unknown option $1, check help (-h/--help/help)"; exit 1
         ;;
         *)
             POSITIONAL_ARGS+=("$1"); shift
