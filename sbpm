@@ -22,10 +22,12 @@ PULL_ARGS=""
 HOST=github
 # does the script save a file if it is in provides
 NOSAVE=0
+# does the script update system packages
+SYSUPD=0
 
 # distro specific
 # AUR helper command
-AURH="yay --answerdiff None --answerclean None --mflags "--noconfirm""
+AURH="yay --asdeps --answerdiff None --answerclean None --mflags "--noconfirm""
 
 # create cache for git repo
 mkdir -p $DIR_CACHE/$PNAME
@@ -59,6 +61,8 @@ repoSync() { # $1 - package name in a format "author/repo"
 
     pretty stage "Sync"
 
+    pretty youaregoingto "install package $1 $(if [[ $SYSUPD == 1 ]]; then printf "$(tylw)and update needed system packages$(tclr)"; fi)"
+
     if ! [[ -d "$PACKAGE_DIR" ]]; then
         git clone $CLONE_ARGS $HOST_EXPANDED "$CLONED_DIR" || exit 1
 
@@ -76,14 +80,14 @@ repoSync() { # $1 - package name in a format "author/repo"
         printf "Package already installed, updating instead\n"
         goAndDoPlease "$PACKAGE_DIR" "git pull $PULL_ARGS"
     fi
-    afterSyncSetup $PACKAGE_DIR $1
+    afterSyncSetup $PACKAGE_DIR
 }
 
 getDirInStore() { # $1 - author/repo
     echo "$STORE_DIR/$(dirName $1)"
 }
 
-afterSyncSetup() { # $1 - a directory of a package in store, $2 - package name
+afterSyncSetup() { # $1 - a directory of a package in store
     source "$1/rampkg"
     depCheckProxy
     linkProvides "$1"
@@ -115,22 +119,27 @@ checkDistro() {
 }
 
 depCheckPacman() {
-    local err=()
-    for dep in "${deplistPacman[@]}"; do
-        if ! [[ $(pacman -Qq $dep 2> /dev/null) == "$dep" ]]; then
-            pretty err2 "$dep not found"
-            err+=("$dep")
-        else
-            pretty info2 "$dep found"
-        fi
-    done
+    if [[ $SYSUPD == 0 ]]; then
+        local err=()
+        for dep in "${deplistPacman[@]}"; do
+            if ! [[ $(pacman -Qq $dep 2> /dev/null) == "$dep" ]]; then
+                pretty err2 "$dep not found"
+                err+=("$dep")
+            else
+                pretty info2 "$dep found"
+            fi
+        done
 
-    if ! [[ $err == "" ]]; then
-        pretty err "\nDependencies are not satisfied\n"
-        pretty info "Installing missing dependencies"
-        $AURH -Sy "${err[@]}" # right now, as of yay v12.5.7, you cannot tell if the installation failed or not. This has been fixed 10 days after the release though. So it will continue no matter what, even if the dependencies do not work.
+        if ! [[ $err == "" ]]; then
+            pretty err "\nDependencies are not satisfied\n"
+            pretty info "Installing missing dependencies"
+            $AURH -Sy "${err[@]}" # right now, as of yay v12.5.7, you cannot tell if the installation failed or not. This has been fixed 10 days after the release though. So it will continue no matter what, even if the dependencies do not work.
+            # also i do not update every package needed because of risking partial updates doing something bad
+        else
+            pretty info "Dependencies are satisfied"
+        fi
     else
-        pretty info "Dependencies are satisfied"
+        $AURH -Sy --needed "${deplistPacman[@]}"
     fi
 }
 
@@ -184,21 +193,15 @@ removeLinks() { # $1 - package name
 }
 
 cleanCache() { # $1 - author/repo
-    if [[ -z ${1+x} ]]; then
-        pretty info "Argument not given, cleaning all cache"
-        rm -rf "$PCACHE"
+    if [[ -d "${PCACHE:?}/$(dirName $1)" ]]; then
+        pretty info "cleaning $1 in cache"
+        rm -rf "${PCACHE:?}/$(dirName $1)"
     else
-        if [[ -d "${PCACHE:?}/$(dirName $1)" ]]; then
-            pretty info "cleaning $1 in cache"
-            rm -rf "${PCACHE:?}/$(dirName $1)"
-        else
-            pretty err "No such package in cache"
-        fi
+        pretty err "No such package in cache"
     fi
 }
 
 deletePackage() { # $1 - author/repo
-    # right now will delete only the package folder
     if [[ -d "$STORE_DIR/$(dirName $1)" ]]; then
         pretty info "Removing $1 from store ($STORE_DIR/$(dirName $1)/)"
         removeLinks $1
@@ -206,6 +209,16 @@ deletePackage() { # $1 - author/repo
     else
         pretty err "No such package in store"
     fi
+}
+
+updateAll() {
+    pretty youaregoingto "update every installed package $(if [[ $SYSUPD == 1 ]]; then printf "$(tylw)and update needed system packages$(tclr)"; fi). This includes: \n$(for p in $STORE_DIR/*; do printf "$(tgrn)$(basename $p)$(tclr) "; done)"
+    for package in $STORE_DIR/*; do
+        pretty info "Updating $(basename $package)"
+        goAndDoPlease "$package" "git pull $PULL_ARGS"
+        afterSyncSetup $package
+        echo
+    done
 }
 
 getHelp() {
@@ -216,12 +229,14 @@ $(tgra)You should always use arguments before an option$(tclr)
 Options:
     $(tprp)get $(tylw)<author/repo>$(tclr)    Syncs a given package from a default host (github) with backups of existing files
     $(tprp)del $(tylw)<author/repo>$(tclr)    Removes a package from store and deletes associated symlinks
+    $(tprp)update$(tclr)               Updates every installed $PNAME package
 
 Arguments:
     $(tprp)--branch $(tylw)<branch>$(tclr)    Specifies a branch to clone
     $(tprp)--clone-args $(tylw)<args>$(tclr)  Specifies arguments for git clone
     $(tprp)--host$(tylw)<host>$(tclr)         Specifies a host from which git will clone a repo
-    -$(tprp)-nosave$(tylw)                    Does not backup files if there is already one in specified directory
+    -$(tprp)-nosave$(tclr)             Does not backup files if there is already one in specified directory
+    $(tprp)--update-sys$(tclr)         Updates system packages if needed
 
 Other:
     $(tprp)meow$(tclr)              Meow!
@@ -246,6 +261,14 @@ pretty() {
         err2)
             printf "$(tred)[E]==>$(tclr) $2\n" >&2
         ;;
+        youaregoingto)
+            printf "You are going to $2\nProceed? [y/n]: "
+            read -n1 choice
+            if ! [[ $choice == "y" ]]; then
+                printf "\nExiting...\n"; exit 0
+            fi
+            echo
+        ;;
     esac
 }
 
@@ -257,8 +280,6 @@ tblu () { printf "\e[0;34;1m" ; }
 tylw () { printf "\e[0;33;1m" ; }
 tprp () { printf "\e[0;35;1m" ; }
 tita () { printf "\e[3m" ; }
-
-#removeLinks rambile/sbpm-test
 
 POSITIONAL_ARGS=()
 while [[ $# -gt 0 ]]; do
@@ -275,6 +296,9 @@ while [[ $# -gt 0 ]]; do
         --nosave)
             NOSAVE=1; shift
         ;;
+        --update-sys)
+            SYSUPD=1; shift
+        ;;
         --clone-args)
             if [[ -z ${name+x} ]]; then
                 pretty err 'Appending args is supported only in a string (i.e. "-q -b main")'
@@ -289,6 +313,9 @@ while [[ $# -gt 0 ]]; do
         ;;
         del)
             deletePackage $2; shift
+        ;;
+        update)
+            updateAll; shift
         ;;
         -*)
             pretty err "Unknown option $1, check help (-h/--help/help)"; exit 1
