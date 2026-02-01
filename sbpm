@@ -62,7 +62,7 @@ repoSync() { # $1 - package name in a format "author/repo"
     if ! [[ -d "$PACKAGE_DIR" ]]; then
         git clone $CLONE_ARGS $HOST_EXPANDED "$CLONED_DIR" || exit 1
 
-        if ! [[ -a "$CLONED_DIR/rampkg" ]]; then
+        if ! [[ -e "$CLONED_DIR/rampkg" ]]; then
             pretty err2 "The repository does not contain rampkg file"
             cleanCache $1
             exit 1
@@ -117,18 +117,18 @@ checkDistro() {
 depCheckPacman() {
     local err=()
     for dep in "${deplistPacman[@]}"; do
-        if ! [[ $(pacman -Qq $dep 2> /dev/null) == "$dep" ]] then
+        if ! [[ $(pacman -Qq $dep 2> /dev/null) == "$dep" ]]; then
             pretty err2 "$dep not found"
-            err+=($dep)
+            err+=("$dep")
         else
             pretty info2 "$dep found"
         fi
     done
 
-    if ! [[ $err == "" ]] then
+    if ! [[ $err == "" ]]; then
         pretty err "\nDependencies are not satisfied\n"
         pretty info "Installing missing dependencies"
-        $AURH -Sy ${err[@]} # right now, as of yay v12.5.7, you cannot tell if the installation failed or not. This has been fixed 10 days after the release though. So it will continue no matter what, even if the dependencies do not work.
+        $AURH -Sy "${err[@]}" # right now, as of yay v12.5.7, you cannot tell if the installation failed or not. This has been fixed 10 days after the release though. So it will continue no matter what, even if the dependencies do not work.
     else
         pretty info "Dependencies are satisfied"
     fi
@@ -144,13 +144,13 @@ linkProvides() { # $1 - directory of a package in store
     pretty stage "Linking provides"
     pretty info "Checking if provides are present"
 
-    if [[ $(echo ${provides[@]}) == "" ]]; then
-        pretty info2 "The project does not provide any files by itself"
+    if [[ "${provides[*]}" == "" ]]; then
+        pretty info2 "The package does not provide any files by itself"
     else
-        for dir in ${provides[@]}; do
+        for dir in "${provides[@]}"; do
             IFS=':' read -ra sepd <<< "$dir"
             pretty info2 "Checking if there is already a file"
-            if [[ -a ${sepd[1]} ]]; then
+            if [[ -e ${sepd[1]} ]]; then
                 pretty err2 "File already exists"
                 if [[ $NOSAVE == 0 ]]; then
                     pretty info2 "Backing up file"
@@ -168,11 +168,10 @@ removeLinks() { # $1 - package name
     pretty info "Removing links from $1 ($(dirName $1))"
     local PACKAGE_DIR=$(getDirInStore $1)
     source "$PACKAGE_DIR/rampkg"
-
-    if [[ $(echo ${provides[@]}) == "" ]]; then
-        pretty info1 "There are no links"
+    if [[ "${provides[*]}" == "" ]]; then
+        pretty info "There are no links"
     else
-        for dir in ${provides[@]}; do
+        for dir in "${provides[@]}"; do
             IFS=':' read -ra sepd <<< "$dir" # [0] - file in store, [1] - destination dir
             pretty info2 "Removing link ${sepd[1]}"
             if [[ -h ${sepd[1]} ]]; then
@@ -189,9 +188,9 @@ cleanCache() { # $1 - author/repo
         pretty info "Argument not given, cleaning all cache"
         rm -rf "$PCACHE"
     else
-        if [[ -d "$PCACHE/$(dirName $1)" ]]; then
+        if [[ -d "${PCACHE:?}/$(dirName $1)" ]]; then
             pretty info "cleaning $1 in cache"
-            rm -rf "$PCACHE/$(dirName $1)"
+            rm -rf "${PCACHE:?}/$(dirName $1)"
         else
             pretty err "No such package in cache"
         fi
@@ -203,7 +202,7 @@ deletePackage() { # $1 - author/repo
     if [[ -d "$STORE_DIR/$(dirName $1)" ]]; then
         pretty info "Removing $1 from store ($STORE_DIR/$(dirName $1)/)"
         removeLinks $1
-        rm -rf "$STORE_DIR/$(dirName $1)"
+        rm -rf "${STORE_DIR:?}/$(dirName $1)"
     else
         pretty err "No such package in store"
     fi
@@ -291,7 +290,7 @@ while [[ $# -gt 0 ]]; do
         del)
             deletePackage $2; shift
         ;;
-        -*|--*)
+        -*)
             pretty err "Unknown option $1, check help (-h/--help/help)"; exit 1
         ;;
         *)
