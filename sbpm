@@ -49,13 +49,13 @@ hostExpansion() {
     esac
 }
 
-dirName() { # $1 - author/repo, outputs "author repo"
+renamePackage() { # $1 - author/repo, outputs "repo@author"
     IFS='/' read -ra sepd <<< "$1"
     echo "${sepd[1]}@${sepd[0]}"
 }
 
 repoSync() { # $1 - package name in a format "author/repo"
-    local CLONED_DIR="$PCACHE/$(dirName $1)"
+    local CLONED_DIR="$PCACHE/$(renamePackage $1)"
     local HOST_EXPANDED=$(hostExpansion $HOST $1)
     local PACKAGE_DIR=$(getDirInStore $1)
 
@@ -84,7 +84,7 @@ repoSync() { # $1 - package name in a format "author/repo"
 }
 
 getDirInStore() { # $1 - author/repo
-    echo "$STORE_DIR/$(dirName $1)"
+    echo "$STORE_DIR/$(renamePackage $1)"
 }
 
 afterSyncSetup() { # $1 - a directory of a package in store
@@ -174,7 +174,7 @@ linkProvides() { # $1 - directory of a package in store
 }
 
 removeLinks() { # $1 - package name
-    pretty info "Removing links from $1 ($(dirName $1))"
+    pretty info "Removing links from $1 ($(renamePackage $1))"
     local PACKAGE_DIR=$(getDirInStore $1)
     source "$PACKAGE_DIR/rampkg"
     if [[ "${provides[*]}" == "" ]]; then
@@ -193,19 +193,19 @@ removeLinks() { # $1 - package name
 }
 
 cleanCache() { # $1 - author/repo
-    if [[ -d "${PCACHE:?}/$(dirName $1)" ]]; then
+    if [[ -d "${PCACHE:?}/$(renamePackage $1)" ]]; then
         pretty info "cleaning $1 in cache"
-        rm -rf "${PCACHE:?}/$(dirName $1)"
+        rm -rf "${PCACHE:?}/$(renamePackage $1)"
     else
         pretty err "No such package in cache"
     fi
 }
 
 deletePackage() { # $1 - author/repo
-    if [[ -d "$STORE_DIR/$(dirName $1)" ]]; then
-        pretty info "Removing $1 from store ($STORE_DIR/$(dirName $1)/)"
+    if [[ -d "$STORE_DIR/$(renamePackage $1)" ]]; then
+        pretty info "Removing $1 from store ($STORE_DIR/$(renamePackage $1)/)"
         removeLinks $1
-        rm -rf "${STORE_DIR:?}/$(dirName $1)"
+        rm -rf "${STORE_DIR:?}/$(renamePackage $1)"
     else
         pretty err "No such package in store"
     fi
