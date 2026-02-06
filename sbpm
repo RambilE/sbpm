@@ -79,6 +79,7 @@ repoSync() { # $1 - package name in a format "author/repo"
         removeLinks $1
         printf "Package already installed, updating instead\n"
         goAndDoPlease "$PACKAGE_DIR" "git clean -f"
+        goAndDoPlease "$PACKAGE_DIR" "git reset --hard origin/main"
         goAndDoPlease "$PACKAGE_DIR" "git pull $PULL_ARGS"
     fi
     afterSyncSetup $PACKAGE_DIR
