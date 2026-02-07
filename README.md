@@ -1,6 +1,17 @@
 # sbpm
 A simple bash "package" manager
 
+# Installation
+```
+git clone https://github.com/rambile/sbpm; cd sbpm
+./sbpm get rambile/sbpm
+cd ../; rm -rf sbpm
+```
+
+To set default values, you need to edit first lines of a script
+
+Check SPECS.md for packaging specs
+
 ```
 sbpm - A simple bash "package" manager
 Example usage: sbpm [ARGUMENTS] get <author/repo>
@@ -17,10 +28,10 @@ Arguments:
     --host<host>         Specifies a host from which git will clone a repo
     --nosave             Does not backup files if there is already one in specified directory
     --update-sys         Updates system packages if needed
+    --nodepcheck         Do not check system dependencies (in case your distro is not supported and you have neede packages)
 
 Other:
     meow              Meow!
     help, -h, --help  Print this message
 ```
 
-note: you can change the cache directory to anywhere accesible to your user in the first lines of script

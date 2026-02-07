@@ -24,6 +24,8 @@ HOST=github
 NOSAVE=0
 # does the script update system packages
 SYSUPD=0
+# do not check system Dependencies
+NODEPCHECK=0
 
 # distro specific
 # AUR helper command
@@ -91,7 +93,7 @@ getDirInStore() { # $1 - author/repo
 
 afterSyncSetup() { # $1 - a directory of a package in store
     source "$1/rampkg"
-    depCheckProxy
+    ! [[ $NODEPCHECK == 1 ]] && depCheckProxy
     linkProvides "$1"
     runSetup
 }
@@ -239,6 +241,7 @@ Arguments:
     $(tprp)--host$(tylw)<host>$(tclr)         Specifies a host from which git will clone a repo
     -$(tprp)-nosave$(tclr)             Does not backup files if there is already one in specified directory
     $(tprp)--update-sys$(tclr)         Updates system packages if needed
+    $(tprp)--nodepcheck$(tclr)         Do not check system dependencies (in case your distro is not supported and you have neede packages)
 
 Other:
     $(tprp)meow$(tclr)              Meow!
@@ -300,6 +303,9 @@ while [[ $# -gt 0 ]]; do
         ;;
         --update-sys)
             SYSUPD=1; shift
+        ;;
+        --nodepcheck)
+            NODEPCHECK=1; shift
         ;;
         --clone-args)
             if [[ -z ${name+x} ]]; then
